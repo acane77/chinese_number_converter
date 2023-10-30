@@ -13,10 +13,11 @@
 class ChineseNumberConvertor():
     def __init__(self, s):
         self.chn_num = "零一二三四五六七八九"
-        self.non_zero_num = "一二三四五六七八九"
         self.chn_dict = {}
         for i, c in enumerate(self.chn_num):
             self.chn_dict[c] = i
+        self.chn_num += "两"
+        self.chn_dict["两"] = 2
         self.i = -1
         self.s = s
         self.p = ""
