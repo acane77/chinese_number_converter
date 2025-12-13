@@ -110,7 +110,7 @@ private:
 #define SISI_U1(a)          (SISI_ULS(a, 0))
 #else
 #define SISI_U4(a, b, c, d) (SISI_ULS(a, 24) | SISI_ULS(b, 16) | SISI_ULS(c, 8) | SISI_ULS(d, 0))
-#define SISI_U3(a, b, c)    (SISI_ULS(c, 24) | SISI_ULS(b, 16) | SISI_ULS(c, 8))
+#define SISI_U3(a, b, c)    (SISI_ULS(a, 24) | SISI_ULS(b, 16) | SISI_ULS(c, 8))
 #define SISI_U2(a, b)       (SISI_ULS(a, 24) | SISI_ULS(b, 16))
 #define SISI_U1(a)          (SISI_ULS(a, 24))
 #endif
@@ -140,11 +140,11 @@ private:
     *out = ' ';
     return 1;
   }
-#undef ULS
-#undef U4
-#undef U3
-#undef U2
-#undef U1
+#undef SISI_ULS
+#undef SISI_U4
+#undef SISI_U3
+#undef SISI_U2
+#undef SISI_U1
 };
 
 /*
