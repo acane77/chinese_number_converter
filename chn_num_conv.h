@@ -319,7 +319,7 @@ private:
       Next();
       unit_factor_ = 100;
       if (LOOKAHEAD == char_zero_) {
-        Next(); m = N();
+        unit_factor_ = 10; Next(); m = N();
       }
       else { m = J(); }
       SISI_RETURN(std::max<NumberType>(1, n) * NumberType(100) + std::max<NumberType>(0, m));
@@ -334,7 +334,7 @@ private:
       Next();
       unit_factor_ = 1000;
       if (LOOKAHEAD == char_zero_) {
-        Next(); m = J();
+        unit_factor_ = 10; Next(); m = J();
       }
       else { m = H(); }
       SISI_RETURN(std::max<NumberType>(1, n) * NumberType(1000) + std::max<NumberType>(0, m));
@@ -347,7 +347,7 @@ private:
     NumberType n = S(), m;
     if (In(unit_num_[NUMBER_UNIT_M])) {
       Next(); unit_factor_ = 10000;
-      if (LOOKAHEAD == char_zero_) { Next(); }
+      if (LOOKAHEAD == char_zero_) { unit_factor_ = 10; Next(); }
       m = S();
       SISI_RETURN(std::max<NumberType>(0, n) * NumberType(10000) + std::max<NumberType>(0, m));
     }
@@ -358,7 +358,7 @@ private:
     NumberType n = M(), m;
     if (In(unit_num_[NUMBER_UNIT_O])) {
       Next(); unit_factor_ = 100000000;
-      if (LOOKAHEAD == char_zero_) { Next(); }
+      if (LOOKAHEAD == char_zero_) { unit_factor_ = 10; Next(); }
       m = M();
       SISI_RETURN(std::max<NumberType>(0, n) * NumberType(100000000) + std::max<NumberType>(0, m));
     }
@@ -402,6 +402,9 @@ private:
         NumberType num = ParseNumber();
         if (has_error_) {
           RestorePos();
+#if SISI_IS_BIG_ENDIAN
+          LOOKAHEAD <<= 32;
+#endif
           out_ += LOOKAHEAD_STR;
           Next();
           continue;
@@ -416,6 +419,9 @@ private:
         if (LOOKAHEAD == char_pt_ && last_is_num) {
           out_ += ".";
         } else {
+#if SISI_IS_BIG_ENDIAN
+          LOOKAHEAD <<= 32;
+#endif
           out_ += LOOKAHEAD_STR;
         }
         last_is_num = false;

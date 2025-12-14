@@ -126,6 +126,7 @@ class ChineseNumberConvertor():
             self.f = 100
             self._next()
             if self.p in self.chn_zero:
+                self.f = 10
                 self._next()
                 m = self._N()
             else:
@@ -141,6 +142,7 @@ class ChineseNumberConvertor():
             self.f = 1000
             self._next()
             if self.p in self.chn_zero:
+                self.f = 10
                 self._next()
                 m = self._J()
             else:
@@ -156,6 +158,7 @@ class ChineseNumberConvertor():
             self.f = 1e4
             self._next()
             if self.p in self.chn_zero:
+                self.f = 10
                 self._next()
             m = self._S()
             return n * 10000 + m
@@ -167,6 +170,7 @@ class ChineseNumberConvertor():
             self.f = 1e8
             self._next()
             if self.p in self.chn_zero:
+                self.f = 10
                 self._next()
             m = self._M()
             return n * 1e8 + m
@@ -289,8 +293,12 @@ Sample output:
 截至二零二三年12月，中国有1410778724人，GDP超过2550000000000人民币
 >> 今年的增长率为负三十五个百分点，需要负责人研究如何止住负增长趋势
 今年的增长率为-35个百分点，需要负责人研究如何止住负增长趋势
->> 二百五加三百六等于六百一
-250加360等于610
+>> 二百五加三百六等于六百一。三百零五加四十五等于三百五
+250加360等于610。305加45等于350
+>> 买这个电脑我花了一万五
+买这个电脑我花了15000
+>> 《一千零一夜》这本书很好看。一千一，一千零一十，一千五百五，一千五百零五
+《1001夜》这本书很好看。1100，1010，1550，1505
 """
 if __name__ == '__main__':
     sentenses = [
@@ -298,8 +306,9 @@ if __name__ == '__main__':
         "给我买二十三个榴莲，再买一两个西瓜",
         "截至二零二三年十二月，中国有十四亿一千七十七万八千七百二十四人，GDP超过两万五千五百亿人民币",
         "今年的增长率为负三十五个百分点，需要负责人研究如何止住负增长趋势",
-        "二百五加三百六等于六百一",
-        "买这个电脑我花了一万五"
+        "二百五加三百六等于六百一。三百零五加四十五等于三百五",
+        "买这个电脑我花了一万五",
+        "《一千零一夜》这本书很好看。一千一，一千零一十，一千五百五，一千五百零五"
     ]
     for s in sentenses:
         main(s, ignore_quant=True)
