@@ -295,14 +295,13 @@ private:
     lookahead_ = str_[peak_idx_];
     SISI_LOGD("Next before JP check: idx=%zu val=%lx", peak_idx_, (uint64_t)lookahead_);
     
-    if (lang_ == Language::Japanese && peak_idx_ + 2 < str_.size()) {
+    if (lang_ == Language::Japanese && peak_idx_ + 1 < str_.size()) {
          static uint32_t u_ze = GetU8Char("ゼ");
-         static uint32_t u_dash = GetU8Char("ー");
          static uint32_t u_ro = GetU8Char("ロ");
-         SISI_LOGD("JP Check: Ze=%x Dash=%x Ro=%x Cur=%x +1=%x +2=%x", u_ze, u_dash, u_ro, (uint32_t)lookahead_, (uint32_t)str_[peak_idx_+1], (uint32_t)str_[peak_idx_+2]);
+         SISI_LOGD("JP Check: Ze=%x Ro=%x Cur=%x +1=%x +2=%x", u_ze, u_ro, (uint32_t)lookahead_, (uint32_t)str_[peak_idx_+1]);
          
-         if (lookahead_ == u_ze && str_[peak_idx_+1] == u_dash && str_[peak_idx_+2] == u_ro) {
-             peak_idx_ += 2;
+         if (lookahead_ == u_ze && str_[peak_idx_+1] == u_ro) {
+             peak_idx_ += 1;
              lookahead_ = char_zero_jp_;
              SISI_LOGD("Found Ze-Ro. New idx=%zu", peak_idx_);
          }
@@ -356,12 +355,11 @@ private:
     lookahead_ = str_[peak_idx_];
     
     // Check if we landed on Ze-Ro tail (Japanese only)
-    if (lang_ == Language::Japanese && peak_idx_ >= 2) {
+    if (lang_ == Language::Japanese && peak_idx_ >= 1) {
          static uint32_t u_ze = GetU8Char("ゼ");
-         static uint32_t u_dash = GetU8Char("ー");
          static uint32_t u_ro = GetU8Char("ロ");
          // Check utf8 values from str_ (which are uint32 value)
-         if (lookahead_ == u_ro && str_[peak_idx_-1] == u_dash && str_[peak_idx_-2] == u_ze) {
+         if (lookahead_ == u_ro && str_[peak_idx_-1] == u_ze) {
              lookahead_ = char_zero_jp_;
              SISI_LOGD("Retract restored Ze-Ro at idx=%zu", peak_idx_);
          }
@@ -385,19 +383,11 @@ private:
     peak_idx_ = peak_idx_rec_;
     lookahead_ = str_[peak_idx_];
     // Re-detect ZeRo if needed
-    if (lang_ == Language::Japanese && peak_idx_ >= 2) {
+    if (lang_ == Language::Japanese && peak_idx_ >= 1) {
          static uint32_t u_ze = GetU8Char("ゼ");
-         static uint32_t u_dash = GetU8Char("ー");
          static uint32_t u_ro = GetU8Char("ロ");
-         // Check if we are at 'tokens' corresponding to Ze-Ro?
-         // This logic is tricky because we only have 'lookahead' and 'peak_idx'.
-         // If `Next` produced `char_zero_jp_`, then `peak_idx` advanced by 2 extra.
-         // If we collected `peak_idx` at that point, it was N+2.
-         // Restore sets `peak_idx` to N+2. `lookahead` to `str_[N+2]`.
-         // `str_[N+2]` is `Ro`.
-         // But logic expects `lookahead` to be `char_zero_jp_`.
          
-         if (lookahead_ == u_ro && str_[peak_idx_-1] == u_dash && str_[peak_idx_-2] == u_ze) {
+         if (lookahead_ == u_ro && str_[peak_idx_-1] == u_ze) {
              lookahead_ = char_zero_jp_;
          }
 
@@ -532,7 +522,7 @@ private:
           SISI_LOGD("Start loop: ParseNumber error");
           RestorePos();
           if (lang_ == Language::Japanese && LOOKAHEAD == char_zero_jp_) {
-              out_ += "ゼーロ";
+              out_ += "ゼロ";
           } else if (lang_ == Language::Japanese && LOOKAHEAD == char_ne_jp_alt_) {
               out_ += "マイナス";
           } else {
@@ -557,7 +547,7 @@ private:
           out_ += ".";
         } else {
           if (lang_ == Language::Japanese && LOOKAHEAD == char_zero_jp_) {
-              out_ += "ゼーロ";
+              out_ += "ゼロ";
           } else if (lang_ == Language::Japanese && LOOKAHEAD == char_ne_jp_alt_) {
               out_ += "マイナス";
           } else {

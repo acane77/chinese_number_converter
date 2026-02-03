@@ -76,7 +76,7 @@ class ChineseNumberConvertor():
         
         if self.language == Language.Japanese:
              self.CHAR_NEGATIVE = "負"
-             self.chn_zero.append("ゼーロ")
+             self.chn_zero.append("ゼロ")
         else:
              self.CHAR_NEGATIVE = "负"
 
@@ -90,7 +90,7 @@ class ChineseNumberConvertor():
         
         # Add Ze-Ro to dict
         if self.language == Language.Japanese:
-             self.chn_dict["ゼーロ"] = 0
+             self.chn_dict["ゼロ"] = 0
 
         self.unit_num = {}
         self.unit_num[self._NUMBER_UNIT_J] = ["十", "拾"]
@@ -110,11 +110,11 @@ class ChineseNumberConvertor():
         self.p = self.s[self.i]
         
         
-        # Handle multi-char token 'ゼーロ'
+        # Handle multi-char token 'ゼロ'
         if self.language == Language.Japanese and self.p == 'ゼ':
-             if self.i + 2 < self.s.__len__() and self.s[self.i+1] == 'ー' and self.s[self.i+2] == 'ロ':
-                  self.p = 'ゼーロ'
-                  self.i += 2
+             if self.i + 1 < self.s.__len__() and self.s[self.i+1] == 'ロ':
+                  self.p = 'ゼロ'
+                  self.i += 1
 
         # Handle multi-char token 'マイナス'
         if self.language == Language.Japanese and self.p == 'マ':
@@ -125,18 +125,18 @@ class ChineseNumberConvertor():
         return self.p
 
     def _retract(self):
-        if self.language == Language.Japanese and self.p == 'ゼーロ':
-             self.i -= 3
+        if self.language == Language.Japanese and self.p == 'ゼロ':
+             self.i -= 2
         elif self.language == Language.Japanese and self.p == 'マイナス':
              self.i -= 4
         else:
              self.i -= 1
         self.p = self.s[self.i]
-        # If we retracted back into 'ゼーロ' or 'マイナス', we need to restore p
+        # If we retracted back into 'ゼロ' or 'マイナス', we need to restore p
         if self.language == Language.Japanese:
-             if self.p == 'ロ' and self.i >= 2:
-                  if self.s[self.i-1] == 'ー' and self.s[self.i-2] == 'ゼ':
-                       self.p = 'ゼーロ'
+             if self.p == 'ロ' and self.i >= 1:
+                  if self.s[self.i-1] == 'ゼ':
+                       self.p = 'ゼロ'
              elif self.p == 'ス' and self.i >= 3:
                   if self.s[self.i-1] == 'ナ' and self.s[self.i-2] == 'イ' and self.s[self.i-3] == 'マ':
                        self.p = 'マイナス'
@@ -150,9 +150,9 @@ class ChineseNumberConvertor():
         if self.i >= 0 and self.i < len(self.s):
              self.p = self.s[self.i]
              if self.language == Language.Japanese:
-                  if self.p == 'ロ' and self.i >= 2:
-                       if self.s[self.i-1] == 'ー' and self.s[self.i-2] == 'ゼ':
-                            self.p = 'ゼーロ'
+                  if self.p == 'ロ' and self.i >= 1:
+                       if self.s[self.i-1] == 'ゼ':
+                            self.p = 'ゼロ'
                   elif self.p == 'ス' and self.i >= 3:
                        if self.s[self.i-1] == 'ナ' and self.s[self.i-2] == 'イ' and self.s[self.i-3] == 'マ':
                             self.p = 'マイナス'
@@ -160,7 +160,7 @@ class ChineseNumberConvertor():
              self.p = 'EOF'
 
     def _N(self, use_f=False):
-        if self.p in self.chn_num or (self.language == Language.Japanese and self.p == 'ゼーロ'):
+        if self.p in self.chn_num or (self.language == Language.Japanese and self.p == 'ゼロ'):
             n = self.chn_dict[self.p]
             self._next()
             return n
@@ -244,7 +244,7 @@ class ChineseNumberConvertor():
         if self.p in toks:
             return
         # Special check for Japanese Ze-Ro
-        if self.language == Language.Japanese and self.p == 'ゼーロ' and 'ゼーロ' in toks:
+        if self.language == Language.Japanese and self.p == 'ゼロ' and 'ゼロ' in toks:
             return
             
         raise ValueError(f"Invalid syntax: expected one of tokens: {toks}")
