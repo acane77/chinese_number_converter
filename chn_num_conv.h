@@ -209,6 +209,7 @@ private:
   U8Char      char_pt_;
   U8Char      char_zero_;
   U8Char      char_zero_jp_;
+  U8Char      char_ne_jp_alt_;
   U8CharMap   chn_dict_;
   std::unordered_map<NumberUnit, U8CharMap> unit_num_;
   size_t      peak_idx_       = -1;
@@ -277,6 +278,7 @@ private:
     if (lang_ == Language::Japanese) {
         char_ne_ = special_words[4]; // 負
         char_zero_jp_ = 0x200000; // Pseudo token for Ze-Ro
+        char_ne_jp_alt_ = 0x200001; // Pseudo token for Mai-Na-Su
         chn_dict_[char_zero_jp_] = 0;
     } else {
         char_ne_ = special_words[3]; // 负
@@ -303,6 +305,19 @@ private:
              peak_idx_ += 2;
              lookahead_ = char_zero_jp_;
              SISI_LOGD("Found Ze-Ro. New idx=%zu", peak_idx_);
+         }
+    }
+
+    if (lang_ == Language::Japanese && peak_idx_ + 3 < str_.size()) {
+         static uint32_t u_ma = GetU8Char("マ");
+         static uint32_t u_i = GetU8Char("イ");
+         static uint32_t u_na = GetU8Char("ナ");
+         static uint32_t u_su = GetU8Char("ス");
+         
+         if (lookahead_ == u_ma && str_[peak_idx_+1] == u_i && str_[peak_idx_+2] == u_na && str_[peak_idx_+3] == u_su) {
+             peak_idx_ += 3;
+             lookahead_ = char_ne_jp_alt_;
+             SISI_LOGD("Found Mai-Na-Su. New idx=%zu", peak_idx_);
          }
     }
     
@@ -350,6 +365,14 @@ private:
              lookahead_ = char_zero_jp_;
              SISI_LOGD("Retract restored Ze-Ro at idx=%zu", peak_idx_);
          }
+         
+         static uint32_t u_ma = GetU8Char("マ");
+         static uint32_t u_i = GetU8Char("イ");
+         static uint32_t u_na = GetU8Char("ナ");
+         static uint32_t u_su = GetU8Char("ス");
+         if (lookahead_ == u_su && peak_idx_ >= 3 && str_[peak_idx_-1] == u_na && str_[peak_idx_-2] == u_i && str_[peak_idx_-3] == u_ma) {
+             lookahead_ = char_ne_jp_alt_;
+         }
     }
     return lookahead_;
   }
@@ -377,11 +400,19 @@ private:
          if (lookahead_ == u_ro && str_[peak_idx_-1] == u_dash && str_[peak_idx_-2] == u_ze) {
              lookahead_ = char_zero_jp_;
          }
+
+         static uint32_t u_ma = GetU8Char("マ");
+         static uint32_t u_i = GetU8Char("イ");
+         static uint32_t u_na = GetU8Char("ナ");
+         static uint32_t u_su = GetU8Char("ス");
+         if (lookahead_ == u_su && peak_idx_ >= 3 && str_[peak_idx_-1] == u_na && str_[peak_idx_-2] == u_i && str_[peak_idx_-3] == u_ma) {
+             lookahead_ = char_ne_jp_alt_;
+         }
     }
   }
 
 #define SISI_IS_FIRST_O() (In(chn_dict_) || In(unit_num_[NUMBER_UNIT_J]) || (lang_ == Language::Japanese && (In(unit_num_[NUMBER_UNIT_H]) || In(unit_num_[NUMBER_UNIT_S]) || In(unit_num_[NUMBER_UNIT_M]) || In(unit_num_[NUMBER_UNIT_O]))))
-#define SISI_IS_FIRST_NE() (SISI_IS_FIRST_O() || LOOKAHEAD == char_ne_)
+#define SISI_IS_FIRST_NE() (SISI_IS_FIRST_O() || LOOKAHEAD == char_ne_ || (lang_ == Language::Japanese && LOOKAHEAD == char_ne_jp_alt_))
 
 #define LOOKAHEAD (lookahead_)
 #define LOOKAHEAD_STR (reinterpret_cast<char*>(&LOOKAHEAD))
@@ -461,7 +492,7 @@ private:
 
   NumberType NE() {
     int factor = 1;
-    if (LOOKAHEAD == char_ne_) {
+    if (LOOKAHEAD == char_ne_ || (lang_ == Language::Japanese && LOOKAHEAD == char_ne_jp_alt_)) {
       Next(); factor = -1;
     }
     if (!SISI_IS_FIRST_O()) {
@@ -502,6 +533,8 @@ private:
           RestorePos();
           if (lang_ == Language::Japanese && LOOKAHEAD == char_zero_jp_) {
               out_ += "ゼーロ";
+          } else if (lang_ == Language::Japanese && LOOKAHEAD == char_ne_jp_alt_) {
+              out_ += "マイナス";
           } else {
 #if SISI_IS_BIG_ENDIAN
               LOOKAHEAD <<= 32;
@@ -525,6 +558,8 @@ private:
         } else {
           if (lang_ == Language::Japanese && LOOKAHEAD == char_zero_jp_) {
               out_ += "ゼーロ";
+          } else if (lang_ == Language::Japanese && LOOKAHEAD == char_ne_jp_alt_) {
+              out_ += "マイナス";
           } else {
 #if SISI_IS_BIG_ENDIAN
               LOOKAHEAD <<= 32;

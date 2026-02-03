@@ -109,26 +109,37 @@ class ChineseNumberConvertor():
             return 'EOF'
         self.p = self.s[self.i]
         
+        
         # Handle multi-char token 'ゼーロ'
         if self.language == Language.Japanese and self.p == 'ゼ':
              if self.i + 2 < self.s.__len__() and self.s[self.i+1] == 'ー' and self.s[self.i+2] == 'ロ':
                   self.p = 'ゼーロ'
                   self.i += 2
+
+        # Handle multi-char token 'マイナス'
+        if self.language == Language.Japanese and self.p == 'マ':
+             if self.i + 3 < self.s.__len__() and self.s[self.i+1] == 'イ' and self.s[self.i+2] == 'ナ' and self.s[self.i+3] == 'ス':
+                  self.p = 'マイナス'
+                  self.i += 3
         
         return self.p
 
     def _retract(self):
         if self.language == Language.Japanese and self.p == 'ゼーロ':
              self.i -= 3
+        elif self.language == Language.Japanese and self.p == 'マイナス':
+             self.i -= 4
         else:
              self.i -= 1
         self.p = self.s[self.i]
-        # If we retracted back into 'ゼーロ', we need to restore p to 'ゼーロ'
-        # But _retract is usually checking specific tokens.
-        # Let's handle the property state restoration.
-        if self.language == Language.Japanese and self.p == 'ロ' and self.i >= 2:
-             if self.s[self.i-1] == 'ー' and self.s[self.i-2] == 'ゼ':
-                  self.p = 'ゼーロ'
+        # If we retracted back into 'ゼーロ' or 'マイナス', we need to restore p
+        if self.language == Language.Japanese:
+             if self.p == 'ロ' and self.i >= 2:
+                  if self.s[self.i-1] == 'ー' and self.s[self.i-2] == 'ゼ':
+                       self.p = 'ゼーロ'
+             elif self.p == 'ス' and self.i >= 3:
+                  if self.s[self.i-1] == 'ナ' and self.s[self.i-2] == 'イ' and self.s[self.i-3] == 'マ':
+                       self.p = 'マイナス'
         return self.p
 
     def _save_pos(self):
@@ -138,9 +149,13 @@ class ChineseNumberConvertor():
         self.i = self.ii
         if self.i >= 0 and self.i < len(self.s):
              self.p = self.s[self.i]
-             if self.language == Language.Japanese and self.p == 'ロ' and self.i >= 2:
-                  if self.s[self.i-1] == 'ー' and self.s[self.i-2] == 'ゼ':
-                       self.p = 'ゼーロ'
+             if self.language == Language.Japanese:
+                  if self.p == 'ロ' and self.i >= 2:
+                       if self.s[self.i-1] == 'ー' and self.s[self.i-2] == 'ゼ':
+                            self.p = 'ゼーロ'
+                  elif self.p == 'ス' and self.i >= 3:
+                       if self.s[self.i-1] == 'ナ' and self.s[self.i-2] == 'イ' and self.s[self.i-3] == 'マ':
+                            self.p = 'マイナス'
         else:
              self.p = 'EOF'
 
@@ -219,7 +234,7 @@ class ChineseNumberConvertor():
 
     def _NE(self):
         factor = 1
-        if self.p == self.CHAR_NEGATIVE:
+        if self.p == self.CHAR_NEGATIVE or (self.language == Language.Japanese and self.p == 'マイナス'):
             self._next()
             factor = -1
         self._match(self._first_O())
@@ -245,7 +260,10 @@ class ChineseNumberConvertor():
         return first_tokens
 
     def _first_NE(self):
-        return self._first_O() + [self.CHAR_NEGATIVE]
+        first_tokens = self._first_O() + [self.CHAR_NEGATIVE]
+        if self.language == Language.Japanese:
+             first_tokens.append('マイナス')
+        return first_tokens
 
     def _init_for_next(self):
         self.f = 1
