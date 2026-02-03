@@ -34,7 +34,11 @@ The BNF Grammar is list as follows:
 """
 
 import re
+from enum import Enum
 
+class Language(Enum):
+    Chinese = 0
+    Japanese = 1
 
 class ChineseNumberConvertor():
     # Constant for unit
@@ -52,7 +56,8 @@ class ChineseNumberConvertor():
 
     CHAR_NEGATIVE = "负"
 
-    def __init__(self, s):
+    def __init__(self, s, language=Language.Chinese):
+        self.language = language
         self._init_num_dict()
 
         # Parser state
@@ -68,6 +73,13 @@ class ChineseNumberConvertor():
         self.chn_num_upper = "零壹贰叁肆伍陆柒捌玖"
         self.chn_zero = [ "零" ]
         self.chn_pt = "点"
+        
+        if self.language == Language.Japanese:
+             self.CHAR_NEGATIVE = "負"
+             self.chn_zero.append("ゼーロ")
+        else:
+             self.CHAR_NEGATIVE = "负"
+
         self.chn_dict = {}
         for i, c in enumerate(self.chn_num):
             self.chn_dict[c] = i
@@ -75,6 +87,10 @@ class ChineseNumberConvertor():
             self.chn_dict[c] = i
         self.chn_num += "两"
         self.chn_dict["两"] = 2
+        
+        # Add Ze-Ro to dict
+        if self.language == Language.Japanese:
+             self.chn_dict["ゼーロ"] = 0
 
         self.unit_num = {}
         self.unit_num[self._NUMBER_UNIT_J] = ["十", "拾"]
@@ -82,6 +98,9 @@ class ChineseNumberConvertor():
         self.unit_num[self._NUMBER_UNIT_S] = ["千", "仟"]
         self.unit_num[self._NUMBER_UNIT_M] = ["万"]
         self.unit_num[self._NUMBER_UNIT_O] = ["亿"]
+        
+        if self.language == Language.Japanese:
+             self.unit_num[self._NUMBER_UNIT_O] = ["億"]
 
     def _next(self):
         self.i += 1
@@ -89,11 +108,27 @@ class ChineseNumberConvertor():
             self.p = 'EOF'
             return 'EOF'
         self.p = self.s[self.i]
+        
+        # Handle multi-char token 'ゼーロ'
+        if self.language == Language.Japanese and self.p == 'ゼ':
+             if self.i + 2 < self.s.__len__() and self.s[self.i+1] == 'ー' and self.s[self.i+2] == 'ロ':
+                  self.p = 'ゼーロ'
+                  self.i += 2
+        
         return self.p
 
     def _retract(self):
-        self.i -= 1
+        if self.language == Language.Japanese and self.p == 'ゼーロ':
+             self.i -= 3
+        else:
+             self.i -= 1
         self.p = self.s[self.i]
+        # If we retracted back into 'ゼーロ', we need to restore p to 'ゼーロ'
+        # But _retract is usually checking specific tokens.
+        # Let's handle the property state restoration.
+        if self.language == Language.Japanese and self.p == 'ロ' and self.i >= 2:
+             if self.s[self.i-1] == 'ー' and self.s[self.i-2] == 'ゼ':
+                  self.p = 'ゼーロ'
         return self.p
 
     def _save_pos(self):
@@ -101,10 +136,16 @@ class ChineseNumberConvertor():
 
     def _restore_pos(self):
         self.i = self.ii
-        self.p = self.s[self.i]
+        if self.i >= 0 and self.i < len(self.s):
+             self.p = self.s[self.i]
+             if self.language == Language.Japanese and self.p == 'ロ' and self.i >= 2:
+                  if self.s[self.i-1] == 'ー' and self.s[self.i-2] == 'ゼ':
+                       self.p = 'ゼーロ'
+        else:
+             self.p = 'EOF'
 
     def _N(self, use_f=False):
-        if self.p in self.chn_num:
+        if self.p in self.chn_num or (self.language == Language.Japanese and self.p == 'ゼーロ'):
             n = self.chn_dict[self.p]
             self._next()
             return n
@@ -125,7 +166,7 @@ class ChineseNumberConvertor():
         if self.p in self.unit_num[self._NUMBER_UNIT_H]:
             self.f = 100
             self._next()
-            if self.p in self.chn_zero:
+            if self.language == Language.Chinese and self.p in self.chn_zero:
                 self.f = 10
                 self._next()
                 m = self._N()
@@ -141,7 +182,7 @@ class ChineseNumberConvertor():
         if self.p in self.unit_num[self._NUMBER_UNIT_S]:
             self.f = 1000
             self._next()
-            if self.p in self.chn_zero:
+            if self.language == Language.Chinese and self.p in self.chn_zero:
                 self.f = 10
                 self._next()
                 m = self._J()
@@ -157,7 +198,7 @@ class ChineseNumberConvertor():
         if self.p in self.unit_num[self._NUMBER_UNIT_M]:
             self.f = 1e4
             self._next()
-            if self.p in self.chn_zero:
+            if self.language == Language.Chinese and self.p in self.chn_zero:
                 self.f = 10
                 self._next()
             m = self._S()
@@ -169,7 +210,7 @@ class ChineseNumberConvertor():
         if self.p in self.unit_num[self._NUMBER_UNIT_O]:
             self.f = 1e8
             self._next()
-            if self.p in self.chn_zero:
+            if self.language == Language.Chinese and self.p in self.chn_zero:
                 self.f = 10
                 self._next()
             m = self._M()
@@ -187,13 +228,24 @@ class ChineseNumberConvertor():
     def _match(self, toks):
         if self.p in toks:
             return
+        # Special check for Japanese Ze-Ro
+        if self.language == Language.Japanese and self.p == 'ゼーロ' and 'ゼーロ' in toks:
+            return
+            
         raise ValueError(f"Invalid syntax: expected one of tokens: {toks}")
 
     def _first_O(self):
-        return "".join(self.chn_dict.keys()) + "".join(self.unit_num[self._NUMBER_UNIT_J])
+        keys = list(self.chn_dict.keys())
+        first_tokens = keys + self.unit_num[self._NUMBER_UNIT_J]
+        if self.language == Language.Japanese:
+             first_tokens += self.unit_num[self._NUMBER_UNIT_H]
+             first_tokens += self.unit_num[self._NUMBER_UNIT_S]
+             first_tokens += self.unit_num[self._NUMBER_UNIT_M]
+             first_tokens += self.unit_num[self._NUMBER_UNIT_O]
+        return first_tokens
 
     def _first_NE(self):
-        return self._first_O() + "负"
+        return self._first_O() + [self.CHAR_NEGATIVE]
 
     def _init_for_next(self):
         self.f = 1
@@ -201,11 +253,12 @@ class ChineseNumberConvertor():
     def _parse_num(self):
         self._init_for_next()
         num = self._NE()
-        if self.f > 10 and self.f <= 10000:
-            # In oral Chinese, only tailing number less than 10 thousand can omit
-            # the tailing numeric unit (千, 百, 十)
-            tail_num = num % 10
-            num = num - tail_num + tail_num * self.f / 10
+        if self.language == Language.Chinese:
+            if self.f > 10 and self.f <= 10000:
+                # In oral Chinese, only tailing number less than 10 thousand can omit
+                # the tailing numeric unit (千, 百, 十)
+                tail_num = num % 10
+                num = num - tail_num + tail_num * self.f / 10
         return num
 
     def _start(self):
@@ -213,7 +266,9 @@ class ChineseNumberConvertor():
         self._next()
         last_is_num = 0
         while self.p != "EOF":
-            if self.p in self._first_NE():
+            # For _first_NE check, we need to be careful with list vs string containment
+            first_ne_tokens = self._first_NE()
+            if self.p in first_ne_tokens:
                 self._save_pos()
                 try:
                     num = int(self._parse_num())
@@ -245,10 +300,10 @@ class ChineseNumberConvertor():
 
 
 
-def replace_chinese_nums(s, ignore_quant=False, quant_unit :str=None, unit_dict :dict=None, chn_dict :dict=None):
+def replace_chinese_nums(s, ignore_quant=False, quant_unit :str=None, unit_dict :dict=None, chn_dict :dict=None, language=Language.Chinese):
     if quant_unit is None:
         quant_unit = "款年月日个台天部代元块"
-    cnc = ChineseNumberConvertor(s)
+    cnc = ChineseNumberConvertor(s, language=language)
     if unit_dict is not None:
         cnc.unit_dict = unit_dict
     if chn_dict is not None:
@@ -267,7 +322,7 @@ def replace_chinese_nums(s, ignore_quant=False, quant_unit :str=None, unit_dict 
             s = s.replace(sn, "<__chn_num_protect_group_({})>".format(i))
     
     # Perform conversion
-    s = ChineseNumberConvertor(s)()
+    s = ChineseNumberConvertor(s, language=language)()
     
     # Postprocess
     if ignore_quant:

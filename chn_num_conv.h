@@ -48,7 +48,7 @@ SOFTWARE.
 #endif
 
 #define SISI_ENABLE_LOG 0
-#ifdef SISI_ENABLE_LOG
+#if SISI_ENABLE_LOG
 #define SISI_LOGD(fmt, ...) printf("[%d][%s] " fmt "\n", __LINE__, __FUNCTION__, ## __VA_ARGS__)
 #else
 #define SISI_LOGD(fmt, ...)
@@ -158,7 +158,13 @@ private:
    Juu -> NonZero 十 Num | 十 Num | Num
    Num -> NonZero | 零
    NonZero -> 一 | 二 | 三 | 四 | 五 | 六 | 七 | 八 | 九
- * */
+ */
+
+enum class Language {
+    Chinese,
+    Japanese
+};
+
 class ChineseNumberConvertor {
 public:
   using U8Char = uint64_t;
@@ -179,7 +185,8 @@ public:
     NUMBER_UNIT_O               = NUMBER_UNIT_HUNDRED_MILLION,
   };
 
-  explicit ChineseNumberConvertor(const char* str) : str_(str) {
+  explicit ChineseNumberConvertor(const char* str, Language lang = Language::Chinese) 
+    : str_(str), lang_(lang) {
     InitializeNumDict();
   }
 
@@ -194,12 +201,14 @@ public:
 
 private:
   UTF8String  str_;
+  Language    lang_;
   enum : U8Char {
     TOKEN_TYPE_EOF = ~((U8Char)0),
   };
   U8Char      char_ne_;
   U8Char      char_pt_;
   U8Char      char_zero_;
+  U8Char      char_zero_jp_;
   U8CharMap   chn_dict_;
   std::unordered_map<NumberUnit, U8CharMap> unit_num_;
   size_t      peak_idx_       = -1;
@@ -238,6 +247,11 @@ private:
   bool In(const U8CharMap& list) {
     return In(list, nullptr);
   }
+  
+  uint32_t GetU8Char(const char* s) {
+      UTF8String u(s);
+      return u[0];
+  }
 
   void InitializeNumDict() {
     unit_num_.clear();
@@ -245,32 +259,98 @@ private:
     unit_num_[NUMBER_UNIT_H] = MakeCharMapFromString("百佰");
     unit_num_[NUMBER_UNIT_S] = MakeCharMapFromString("千仟");
     unit_num_[NUMBER_UNIT_M] = MakeCharMapFromString("万");
-    unit_num_[NUMBER_UNIT_O] = MakeCharMapFromString("亿");
+    
+    if (lang_ == Language::Japanese) {
+        unit_num_[NUMBER_UNIT_O] = MakeCharMapFromString("億");
+    } else {
+        unit_num_[NUMBER_UNIT_O] = MakeCharMapFromString("亿");
+    }
 
     chn_dict_.clear();
     AssignCharMapFromString("零一二三四五六七八九", chn_dict_);
     AssignCharMapFromString("零壹贰叁肆伍陆柒捌玖", chn_dict_);
 
-    UTF8String special_words("零点两负");
+    UTF8String special_words("零点两负負");
     char_zero_ = special_words[0];
     char_pt_ = special_words[1];
     chn_dict_[special_words[2]] = 2; // Alias for 二
-    char_ne_ = special_words[3];
+    if (lang_ == Language::Japanese) {
+        char_ne_ = special_words[4]; // 負
+        char_zero_jp_ = 0x200000; // Pseudo token for Ze-Ro
+        chn_dict_[char_zero_jp_] = 0;
+    } else {
+        char_ne_ = special_words[3]; // 负
+    }
   }
 
   U8Char Next() {
     peak_idx_++;
     if (peak_idx_ >= str_.size()) {
+      SISI_LOGD("Next EOF. idx=%zu size=%zu", peak_idx_, str_.size());
       lookahead_ = TOKEN_TYPE_EOF;
       return lookahead_;
     }
     lookahead_ = str_[peak_idx_];
+    SISI_LOGD("Next before JP check: idx=%zu val=%lx", peak_idx_, (uint64_t)lookahead_);
+    
+    if (lang_ == Language::Japanese && peak_idx_ + 2 < str_.size()) {
+         static uint32_t u_ze = GetU8Char("ゼ");
+         static uint32_t u_dash = GetU8Char("ー");
+         static uint32_t u_ro = GetU8Char("ロ");
+         SISI_LOGD("JP Check: Ze=%x Dash=%x Ro=%x Cur=%x +1=%x +2=%x", u_ze, u_dash, u_ro, (uint32_t)lookahead_, (uint32_t)str_[peak_idx_+1], (uint32_t)str_[peak_idx_+2]);
+         
+         if (lookahead_ == u_ze && str_[peak_idx_+1] == u_dash && str_[peak_idx_+2] == u_ro) {
+             peak_idx_ += 2;
+             lookahead_ = char_zero_jp_;
+             SISI_LOGD("Found Ze-Ro. New idx=%zu", peak_idx_);
+         }
+    }
+    
     return lookahead_;
   }
 
   U8Char Retract() {
-    peak_idx_--;
+    if (lang_ == Language::Japanese && lookahead_ == char_zero_jp_) {
+        // If current is pseudo, we want to go back to BEFORE pseudo.
+        // Pseudo consumes 3 chars (Ze, -, Ro).
+        // Current index points to Ro.
+        // So we need to go back 3 steps.
+        // Wait, if Next() sets peak_idx to Ro.
+        // No, Next sets peak_idx to Ro. 
+        // Then loop condition peak_idx++ -> Ro+1.
+        // If we are at EOF (Ro+1). Retract -> Ro.
+        // So peak_idx_ -= 1.
+        peak_idx_--; // Normal backtrack from EOF or next token
+        // But if lookahead_ was pseudo, it means we are sitting ON the token.
+        // The parser state: lookahead_ is the current token. peak_idx_ points to the last char of current token?
+        // Next: peak_idx_ += 2 (points to Ro). lookahead = pseudo.
+        // So peak_idx matches lookahead.
+        // If we Retract FROM pseudo.
+        // We want to return to state before Next() called? 
+        // No, Retract() means "Put pseudo back to input".
+        // Actually Retract means "Go back 1 token".
+        // If the previous token was ZeRo.
+        // We are currently at EOF.
+        // Retract() -> peak_idx-- (points to Ro).
+        // We need to see ZeRo.
+        // So we need to detect ZeRo at Ro.
+    } else {
+        peak_idx_--;
+    }
+    
     lookahead_ = str_[peak_idx_];
+    
+    // Check if we landed on Ze-Ro tail (Japanese only)
+    if (lang_ == Language::Japanese && peak_idx_ >= 2) {
+         static uint32_t u_ze = GetU8Char("ゼ");
+         static uint32_t u_dash = GetU8Char("ー");
+         static uint32_t u_ro = GetU8Char("ロ");
+         // Check utf8 values from str_ (which are uint32 value)
+         if (lookahead_ == u_ro && str_[peak_idx_-1] == u_dash && str_[peak_idx_-2] == u_ze) {
+             lookahead_ = char_zero_jp_;
+             SISI_LOGD("Retract restored Ze-Ro at idx=%zu", peak_idx_);
+         }
+    }
     return lookahead_;
   }
 
@@ -281,18 +361,32 @@ private:
   void RestorePos() {
     peak_idx_ = peak_idx_rec_;
     lookahead_ = str_[peak_idx_];
+    // Re-detect ZeRo if needed
+    if (lang_ == Language::Japanese && peak_idx_ >= 2) {
+         static uint32_t u_ze = GetU8Char("ゼ");
+         static uint32_t u_dash = GetU8Char("ー");
+         static uint32_t u_ro = GetU8Char("ロ");
+         // Check if we are at 'tokens' corresponding to Ze-Ro?
+         // This logic is tricky because we only have 'lookahead' and 'peak_idx'.
+         // If `Next` produced `char_zero_jp_`, then `peak_idx` advanced by 2 extra.
+         // If we collected `peak_idx` at that point, it was N+2.
+         // Restore sets `peak_idx` to N+2. `lookahead` to `str_[N+2]`.
+         // `str_[N+2]` is `Ro`.
+         // But logic expects `lookahead` to be `char_zero_jp_`.
+         
+         if (lookahead_ == u_ro && str_[peak_idx_-1] == u_dash && str_[peak_idx_-2] == u_ze) {
+             lookahead_ = char_zero_jp_;
+         }
+    }
   }
 
-#define SISI_IS_FIRST_O() (In(chn_dict_) || In(unit_num_[NUMBER_UNIT_J]))
+#define SISI_IS_FIRST_O() (In(chn_dict_) || In(unit_num_[NUMBER_UNIT_J]) || (lang_ == Language::Japanese && (In(unit_num_[NUMBER_UNIT_H]) || In(unit_num_[NUMBER_UNIT_S]) || In(unit_num_[NUMBER_UNIT_M]) || In(unit_num_[NUMBER_UNIT_O]))))
 #define SISI_IS_FIRST_NE() (SISI_IS_FIRST_O() || LOOKAHEAD == char_ne_)
 
 #define LOOKAHEAD (lookahead_)
 #define LOOKAHEAD_STR (reinterpret_cast<char*>(&LOOKAHEAD))
 
-// #define SISI_PRINT_LOOKAHEAD SISI_LOGD("lookahead enter: %s", LOOKAHEAD_STR);
-// #define SISI_ENTER SISI_LOGD("enter %s...", __FUNCTION__);
-// #define SISI_EXIT SISI_LOGD("exit %s...", __FUNCTION__);
-// #define SISI_RETURN(x) do { auto rr = (x); SISI_LOGD("exit %s..., ret value is %ld", __FUNCTION__, rr); return (rr); } while (0)
+
 #define SISI_RETURN(x) return (x)
 
   NumberType N(bool use_f=false) {
@@ -318,7 +412,7 @@ private:
     if (In(unit_num_[NUMBER_UNIT_H])) {
       Next();
       unit_factor_ = 100;
-      if (LOOKAHEAD == char_zero_) {
+      if (lang_ == Language::Chinese && LOOKAHEAD == char_zero_) {
         unit_factor_ = 10; Next(); m = N();
       }
       else { m = J(); }
@@ -333,7 +427,7 @@ private:
     if (In(unit_num_[NUMBER_UNIT_S])) {
       Next();
       unit_factor_ = 1000;
-      if (LOOKAHEAD == char_zero_) {
+      if (lang_ == Language::Chinese && LOOKAHEAD == char_zero_) {
         unit_factor_ = 10; Next(); m = J();
       }
       else { m = H(); }
@@ -347,7 +441,7 @@ private:
     NumberType n = S(), m;
     if (In(unit_num_[NUMBER_UNIT_M])) {
       Next(); unit_factor_ = 10000;
-      if (LOOKAHEAD == char_zero_) { unit_factor_ = 10; Next(); }
+      if (lang_ == Language::Chinese && LOOKAHEAD == char_zero_) { unit_factor_ = 10; Next(); }
       m = S();
       SISI_RETURN(std::max<NumberType>(0, n) * NumberType(10000) + std::max<NumberType>(0, m));
     }
@@ -358,7 +452,7 @@ private:
     NumberType n = M(), m;
     if (In(unit_num_[NUMBER_UNIT_O])) {
       Next(); unit_factor_ = 100000000;
-      if (LOOKAHEAD == char_zero_) { unit_factor_ = 10; Next(); }
+      if (lang_ == Language::Chinese && LOOKAHEAD == char_zero_) { unit_factor_ = 10; Next(); }
       m = M();
       SISI_RETURN(std::max<NumberType>(0, n) * NumberType(100000000) + std::max<NumberType>(0, m));
     }
@@ -381,11 +475,13 @@ private:
     unit_factor_ = 1;
     has_error_ = false;
     NumberType num = NE();
-    if (unit_factor_ > 10 && unit_factor_ <= 10000) {
-      // In oral Chinese, only tailing number less than 10 thousand can omit
-      // the tailing numeric unit (千, 百, 十)
-      auto tail_num = num % 10;
-      num = num - tail_num + tail_num * unit_factor_ / 10;
+    if (lang_ == Language::Chinese) {
+        if (unit_factor_ > 10 && unit_factor_ <= 10000) {
+          // In oral Chinese, only tailing number less than 10 thousand can omit
+          // the tailing numeric unit (千, 百, 十)
+          auto tail_num = num % 10;
+          num = num - tail_num + tail_num * unit_factor_ / 10;
+        }
     }
     return num;
   }
@@ -397,18 +493,25 @@ private:
     Next();
     bool last_is_num = false;
     while (LOOKAHEAD != TOKEN_TYPE_EOF) {
+      SISI_LOGD("Start loop: idx=%zu val=%lx first_ne=%d", peak_idx_, (uint64_t)LOOKAHEAD, SISI_IS_FIRST_NE());
       if (SISI_IS_FIRST_NE()) {
         SavePos();
         NumberType num = ParseNumber();
         if (has_error_) {
+          SISI_LOGD("Start loop: ParseNumber error");
           RestorePos();
+          if (lang_ == Language::Japanese && LOOKAHEAD == char_zero_jp_) {
+              out_ += "ゼーロ";
+          } else {
 #if SISI_IS_BIG_ENDIAN
-          LOOKAHEAD <<= 32;
+              LOOKAHEAD <<= 32;
 #endif
-          out_ += LOOKAHEAD_STR;
+              out_ += LOOKAHEAD_STR;
+          }
           Next();
           continue;
         }
+        SISI_LOGD("Start loop: Parsed num %ld", (long)num);
         // Do not add space for single number, Typically for phone numbers, years
         if (last_is_num && num > 10) {
           out_ += " ";
@@ -416,13 +519,23 @@ private:
         out_ += std::to_string(num);
         last_is_num = true;
       } else {
+        SISI_LOGD("Start loop: ELSE block");
         if (LOOKAHEAD == char_pt_ && last_is_num) {
           out_ += ".";
         } else {
+          if (lang_ == Language::Japanese && LOOKAHEAD == char_zero_jp_) {
+              out_ += "ゼーロ";
+          } else {
 #if SISI_IS_BIG_ENDIAN
-          LOOKAHEAD <<= 32;
+              LOOKAHEAD <<= 32;
 #endif
-          out_ += LOOKAHEAD_STR;
+              out_ += LOOKAHEAD_STR; // DANGEROUS for UTF-8?
+                // If LOOKAHEAD is Ro (30ED).
+                // It appends bytes ED 30.
+                // This explains junk "ロ" potentially if terminal decodes it luckly?
+                // Or if LOOKAHEAD_STR works by luck.
+                // We should probably handle unicode better here.
+          }
         }
         last_is_num = false;
         Next();
